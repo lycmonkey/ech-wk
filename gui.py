@@ -12,8 +12,19 @@ import subprocess
 import threading
 from pathlib import Path
 
-# Windows 高 DPI 支持 - 必须在导入 PyQt5 之前设置
+# Windows 特殊处理
 if sys.platform == 'win32':
+    # 隐藏控制台窗口
+    try:
+        from ctypes import windll
+        # 获取控制台窗口句柄并隐藏
+        hwnd = windll.kernel32.GetConsoleWindow()
+        if hwnd:
+            windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE = 0
+    except:
+        pass
+    
+    # 高 DPI 支持
     try:
         from ctypes import windll
         windll.shcore.SetProcessDpiAwareness(2)  # PROCESS_PER_MONITOR_DPI_AWARE
@@ -185,12 +196,19 @@ class ProcessThread(QThread):
         
         try:
             # Windows 上需要指定 UTF-8 编码，因为 Go 程序输出 UTF-8
-            self.process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                bufsize=1
-            )
+            # 同时隐藏子进程的控制台窗口
+            popen_kwargs = {
+                'stdout': subprocess.PIPE,
+                'stderr': subprocess.STDOUT,
+                'bufsize': 1
+            }
+            
+            # Windows: 使用 CREATE_NO_WINDOW 隐藏控制台
+            if sys.platform == 'win32':
+                CREATE_NO_WINDOW = 0x08000000
+                popen_kwargs['creationflags'] = CREATE_NO_WINDOW
+            
+            self.process = subprocess.Popen(cmd, **popen_kwargs)
             self.is_running = True
             
             # 使用 UTF-8 解码，忽略无法解码的字符
@@ -358,7 +376,7 @@ class MainWindow(QMainWindow):
         advanced_layout.addWidget(self.create_label_edit("身份令牌:", self.token_edit))
         row1 = QHBoxLayout()
         self.ip_edit = QLineEdit()
-        row1.addWidget(self.create_label_edit("指定IP:", self.ip_edit))
+        row1.addWidget(self.create_label_edit("优选IP或域名:", self.ip_edit))
         self.dns_edit = QLineEdit()
         row1.addWidget(self.create_label_edit("DOH服务器:", self.dns_edit))
         advanced_layout.addLayout(row1)
@@ -732,4 +750,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
